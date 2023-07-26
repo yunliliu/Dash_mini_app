@@ -1,0 +1,15 @@
+venv
+*.pyc
+.DS_Store
+.env
+
+*.iml
+*.xml
+mnist2500_labels.txt
+mnist2500_X.txt
+.ipynb_checkpoints/TSNE_MNIST_test-checkpoint.ipynb
+mnist_data.csv
+mnist_label.csv
+input_2000.csv
+input_750.csv
+input_data.csv
