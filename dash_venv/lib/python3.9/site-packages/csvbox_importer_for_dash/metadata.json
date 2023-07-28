@@ -1,0 +1,51 @@
+{
+  "src/lib/components/CsvboxImporterForDash.react.js": {
+    "description": "CsvboxImporterForDash is a component for CSVBox.io integration in Dash.",
+    "displayName": "CsvboxImporterForDash",
+    "methods": [],
+    "props": {
+      "id": {
+        "type": {
+          "name": "string"
+        },
+        "required": false,
+        "description": "The ID used to identify this component in Dash callbacks."
+      },
+      "licenseKey": {
+        "type": {
+          "name": "string"
+        },
+        "required": true,
+        "description": "The license key for CSVBox.io."
+      },
+      "userId": {
+        "type": {
+          "name": "string"
+        },
+        "required": true,
+        "description": "The user ID for CSVBox.io."
+      },
+      "setProps": {
+        "type": {
+          "name": "func"
+        },
+        "required": false,
+        "description": "Dash-assigned callback that should be called to report property changes\nto Dash, to make them available for callbacks."
+      },
+      "result": {
+        "type": {
+          "name": "bool"
+        },
+        "required": false,
+        "description": "Result of the import operation."
+      },
+      "data": {
+        "type": {
+          "name": "object"
+        },
+        "required": false,
+        "description": "Data from the import operation."
+      }
+    }
+  }
+}

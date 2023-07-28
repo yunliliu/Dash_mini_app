@@ -1,287 +1,174 @@
-# -*- coding: utf-8 -*-
-import base64
-import io
-import os
+import yfinance as yf
+import pandas as pd
 import dash
-import time
 from dash import dcc
 from dash import html
-from dash.dependencies import Input, Output, State
-import numpy as np
-import flask
-from flask_cors import CORS
-import pandas as pd
-import plotly.graph_objs as go
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
+from dash import dash_table
+from dash.dependencies import Input, Output
+from IPython.display import display
+import base64
+import io
+from csvbox_importer_for_dash import CsvboxImporterForDash
+import datetime
 
-app = dash.Dash(__name__)
+
+# Create Dash app
+external_stylesheets = [
+    {
+        "href": (
+            "https://fonts.googleapis.com/css2?"
+            "family=Lato:wght@400;700&display=swap"
+        ),
+        "rel": "stylesheet",
+    },
+]
+
+app = dash.Dash(__name__,external_stylesheets=external_stylesheets)
 server = app.server
-CORS(server)
 
-if 'DYNO' in os.environ:
-    app.scripts.append_script({
-        'external_url': 'https://cdn.rawgit.com/chriddyp/ca0d8f02a1659981a0ea7f013a378bbd/raw/e79f3f789517deec58f41251f7dbb6bee72c44ab/plotly_ga.js'
-    })
-
-# Generate the default scatter plot
-tsne_df = pd.read_csv("data/tsne_3d.csv", index_col=0)
-
-data = []
-
-for idx, val in tsne_df.groupby(tsne_df.index):
-    idx = int(idx)
-
-    scatter = go.Scatter3d(
-        name=f"Digit {idx}",
-        x=val['x'],
-        y=val['y'],
-        z=val['z'],
-        mode='markers',
-        marker=dict(
-            size=2.5,
-            symbol='circle'
-        )
-    )
-    data.append(scatter)
-
-
-def input_field(title, state_id, state_value, state_max, state_min):
-    """Takes as parameter the title, state, default value and range of an input field, and output a Div object with
-    the given specifications."""
-    return html.Div([
-        html.P(title,
-               style={
-                   'display': 'inline-block',
-                   'verticalAlign': 'mid',
-                   'marginRight': '5px',
-                   'margin-bottom': '0px',
-                   'margin-top': '0px'
-               }),
-
-        html.Div([
-            dcc.Input(
-                id=state_id,
-                type='number',
-                value=state_value,
-                max=state_max,
-                min=state_min,
-                size=7
-            )
-        ],
-            style={
-                'display': 'inline-block',
-                'margin-top': '0px',
-                'margin-bottom': '0px'
-            }
-        )
-    ]
-    )
-
-
-# Layout for the t-SNE graph
-tsne_layout = go.Layout(
-    margin=dict(
-        l=0,
-        r=0,
-        b=0,
-        t=0
-    )
-)
-
-# App
+# Define the layout
 app.layout = html.Div([
-    # In-browser storage of global variables
-    html.Div(
-        id="data-df-and-message",
-        style={'display': 'none'}
-    ),
-
-    html.Div(
-        id="label-df-and-message",
-        style={'display': 'none'}
-    ),
-
-    # Main app
-    html.Div([
-        html.H2(
-            't-SNE Explorer',
-            id='title',
-            style={
-                'float': 'left',
-                'margin-top': '20px',
-                'margin-bottom': '0',
-                'margin-left': '7px'
-            }
-        ),
-        html.Img(
-            src="https://s3-us-west-1.amazonaws.com/plotly-tutorials/logo/new-branding/dash-logo-by-plotly-stripe.png",
-            style={
-                'height': '100px',
-                'float': 'right'
-            }
-        )
-    ],
-        className="row"
-    ),
-
-    html.Div([
-        html.Div([
-            # Data about the graph
-            html.Div(
-                id="kl-divergence",
-                style={'display': 'none'}
-            ),
-
-            html.Div(
-                id="end-time",
-                style={'display': 'none'}
-            ),
-
-            html.Div(
-                id="error-message",
-                style={'display': 'none'}
-            ),
-
-            # The graph
-            dcc.Graph(
-                id='tsne-3d-plot',
-                figure={
-                    'data': data,
-                    'layout': tsne_layout
-                },
-                style={
-                    'height': '80vh',
-                },
-            )
-        ],
-            id="plot-div",
-            className="eight columns"
-        ),
-
-        html.Div([
-
-            html.H4(
-                't-SNE Parameters',
-                id='tsne_h4'
-            ),
-
-            input_field("Perplexity:", "perplexity-state", 20, 50, 5),
-
-            input_field("Number of Iterations:", "n-iter-state", 400, 1000, 250),
-
-            input_field("Learning Rate:", "lr-state", 200, 1000, 10),
-
-            input_field("Initial PCA dimensions:", "pca-state", 30, 10000, 3),
-
-            html.Button(
-                id='tsne-train-button',
-                n_clicks=0,
-                children='Start Training t-SNE'
-            ),
-
-            dcc.Upload(
-                id='upload-data',
-                children=html.A('Upload your input data here.'),
-                style={
-                    'height': '45px',
-                    'line-height': '45px',
-                    'border-width': '1px',
-                    'border-style': 'dashed',
-                    'border-radius': '5px',
-                    'text-align': 'center',
-                    'margin-top': '5px',
-                    'margin-bottom': '5 px'
-                },
-                multiple=False,
-                max_size=-1
-            ),
-
-            dcc.Upload(
-                id='upload-label',
-                children=html.A('Upload your labels here.'),
-                style={
-                    'height': '45px',
-                    'line-height': '45px',
-                    'border-width': '1px',
-                    'border-style': 'dashed',
-                    'border-radius': '5px',
-                    'text-align': 'center',
-                    'margin-top': '5px',
-                    'margin-bottom': '5px'
-                },
-                multiple=False,
-                max_size=-1
-            ),
-
+    dcc.Tabs(id='tabs', value='tab-1', children=[
+        dcc.Tab(label='Stock Analysis', value='tab-1', children=[
+            html.H1("Stock Ticker Analysis", className="title"),
             html.Div([
-                html.P(id='upload-data-message',
-                       style={
-                           'margin-bottom': '0px'
-                       }),
+                html.Label("Enter a stock ticker symbol:", className="input-label"),
+                dcc.Input(
+                    id="input-ticker",
+                    type="text",
+                    value="AAPL",  # Default ticker symbol
+                    className="input-field"
+                ),
+            ], className="input-container"),
+            html.Div([
+                html.Label("Enter time series period:", className="input-label"),
+                dcc.Dropdown(
+                    id="input-number",
+                    options=[
+                        {'label': i, 'value': i} for i in range(1, 11)
+                    ],
+                    value=1,  # Default value
+                    className="input-dropdown"
+                ),
+                dcc.Dropdown(
+                    id="input-period",
+                    options=[
+                        {'label': 'Day(s)', 'value': 'd'},
+                        {'label': 'Month(s)', 'value': 'mo'},
+                        {'label': 'Year(s)', 'value': 'y'}
+                    ],
+                    value='y',  # Default value
+                    className="input-dropdown"
+                ),
+            ], className="input-container"),
+            html.Button("Submit", id="submit-button", className="submit-button"),
+            dcc.Graph(id="price-graph", className="price-graph"),
+            html.H3("Descriptive Statistics", className="statistics-title"),
+            html.Div(id="statistics-output", className="statistics-output"),
+            html.Button("Download statistics", className="submit-button"),
+            dcc.Download(id="download-dataframe-csv"),
+        ]),
+        dcc.Tab(label='CSV Importer', value='tab-2', children=[
+            dcc.Upload(
+            id='upload-data',
+            children=html.Div([
+                'Drag and Drop or ',
+                html.A('Select Files')
+            ]),
+            style={
+                'width': '100%',
+                'height': '60px',
+                'lineHeight': '60px',
+                'borderWidth': '1px',
+                'borderStyle': 'dashed',
+                'borderRadius': '5px',
+                'textAlign': 'center',
+                'margin': '10px'
+            },
+            # Allow multiple files to be uploaded
+            multiple=True
+        ),
+        html.Div(id='output-data-upload'),
+        ]),
+        dcc.Tab(
+        label='csvbox-importer2', 
+        value='tab-3', 
+        children=[
+            CsvboxImporterForDash(
+                id='my-csvbox-importer',
+                licenseKey="VUSagg1Y5Jz4POcqNvIbC5B2gkbkfk",
+                userId='default123'
+            ),
 
-                html.P(id='upload-label-message',
-                       style={
-                           'margin-bottom': '0px'
-                       }),
-
-                html.Div(id='training-status-message',
-                         style={
-                             'margin-bottom': '0px',
-                             'margin-top': '0px'
-                         }),
-
-                html.P(id='error-status-message')
-            ],
-                id='output-messages',
-                style={
-                    'margin-bottom': '2px',
-                    'margin-top': '2px'
-                }
-            )
-        ],
-            className="four columns"
-        )
-    ],
-        className="row"
+        ]
     ),
+    ])
+], className="app-container")
 
-    html.Div([
-        dcc.Markdown('''
-**What is t-SNE?**
 
-t-distributed stochastic neighbor embedding, created by van der Maaten and Hinton in 2008, is a visualization algorithm that reduce a high-dimensional space (e.g. an image or a word embedding) into two or three dimensions, so we can visualize how the data is distributed. A classical example is MNIST, a dataset of 60,000 handwritten digits of size 28x28 in black and white. When you reduce the MNIST dataset using t-SNE, you can clearly see all the digit clustered together, with the exception of a few that might have been poorly written. [You can read a detailed explanation of the algorithm on van der Maaten's personal blog.](https://lvdmaaten.github.io/tsne/)
-
-**How to use the app**
-
-To train your own t-SNE, you can input your own high-dimensional dataset and the corresponding labels inside the upload fields. For convenience, small sample datasets are included inside the data folder. The training can take a lot of time depending on the size of the dataset (the complete MNIST dataset could take 15-30 min), so it is **recommended to clone the repo and run the app locally if you want to use bigger datasets**. [You can find the repository containing this model here.](https://github.com/plotly/dash-tsne)''')
-    ],
-        style={
-            'margin-top': '15px'
-        },
-        className="row"
-    )
-],
-    className="container",
-    style={
-        'width': '90%',
-        'max-width': 'none',
-        'font-size': '1.5rem'
-    }
+# Define callback for updating the graph and statistics
+@app.callback(
+    [Output("price-graph", "figure"), Output("statistics-output", "children")],
+    [Input("submit-button", "n_clicks")],
+    [dash.dependencies.State("input-ticker", "value"),
+     dash.dependencies.State("input-number", "value"),
+     dash.dependencies.State("input-period", "value")]
 )
+def update_output(n_clicks, ticker, number, period):
+    if ticker:
+        # Concatenate the number and period to form the time series period string
+        period = str(number) + period
+        # Retrieve stock data from Yahoo Finance
+        data = yf.download(ticker, period=period, progress=False)
+        data.reset_index(inplace=True)
+        # Create the price graph
+        fig = {
+            "data": [
+                {"x": data['Date'], "y": data["Close"], "type": "line", "name": ticker}
+            ],
+            "layout": {
+                "title": f"{ticker} Price Time Series"
+            }
+        }
+        # Calculate descriptive statistics and round to 2 decimal places
+        statistics = data.describe().transpose().reset_index()
+        statistics = statistics.round(2)
+        # Create the statistics table
+        statistics_table = dash_table.DataTable(
+            data=statistics.to_dict("records"),
+            columns=[{"name": c, "id": c} for c in statistics.columns],
+            style_as_list_view=True,
+            style_cell={"padding": "5px"},
+            style_header={"fontWeight": "bold"}
+        )
+        return fig, statistics_table
+    else:
+        return {}, ""
 
+@app.callback(
+    Output("download-dataframe-csv", "data"),
+    [Input("btn_csv", "n_clicks")],
+    [dash.dependencies.State("input-ticker", "value"),
+     dash.dependencies.State("input-number", "value"),
+     dash.dependencies.State("input-period", "value")]
+)
+def download_csv(n_clicks, ticker, number, period):
+    if ticker:
+        # Set the period based on number and period inputs
+        period = str(number) + period
+        # Retrieve stock data from Yahoo Finance
+        data = yf.download(ticker, period=period, progress=False)
+        data.reset_index(inplace=True)
+        # Calculate descriptive statistics and round to 2 decimal places
+        statistics = data.describe().transpose().reset_index()
+        statistics = statistics.round(2)
+        return dcc.send_data_frame(statistics.to_csv, "my_data.csv")
+    return {}
 
-def parse_content(contents, filename):
-    """This function parses the raw content and the file names, and returns the dataframe containing the data, as well
-    as the message displaying whether it was successfully parsed or not."""
-
-    if contents is None:
-        return None, ""
-
+def parse_contents(contents, filename, date):
     content_type, content_string = contents.split(',')
 
     decoded = base64.b64decode(content_string)
-
     try:
         if 'csv' in filename:
             # Assume that the user uploaded a CSV file
@@ -290,242 +177,43 @@ def parse_content(contents, filename):
         elif 'xls' in filename:
             # Assume that the user uploaded an excel file
             df = pd.read_excel(io.BytesIO(decoded))
-
-        else:
-            return None, 'The file uploaded is invalid.'
     except Exception as e:
         print(e)
-        return None, 'There was an error processing this file.'
+        return html.Div([
+            'There was an error processing this file.'
+        ])
 
-    return df, f'{filename} successfully processed.'
+    return html.Div([
+        html.H5(filename),
+        html.H6(datetime.datetime.fromtimestamp(date)),
 
-
-# Uploaded data --> Hidden Data Div
-@app.callback(Output('data-df-and-message', 'children'),
-              [Input('upload-data', 'contents'),
-               Input('upload-data', 'filename')])
-def parse_data(contents, filename):
-    data_df, message = parse_content(contents, filename)
-
-    if data_df is None:
-        return [None, message]
-
-    elif data_df.shape[1] < 3:
-        return [None, f'The dimensions of {filename} are invalid.']
-
-    return [data_df.to_json(orient="split"), message]
-
-
-# Uploaded labels --> Hidden Label div
-@app.callback(Output('label-df-and-message', 'children'),
-              [Input('upload-label', 'contents'),
-               Input('upload-label', 'filename')])
-def parse_label(contents, filename):
-    label_df, message = parse_content(contents, filename)
-
-    if label_df is None:
-        return [None, message]
-
-    elif label_df.shape[1] != 1:
-        return [None, f'The dimensions of {filename} are invalid.']
-
-    return [label_df.to_json(orient="split"), message]
-
-
-# Hidden Data Div --> Display upload status message (Data)
-@app.callback(Output('upload-data-message', 'children'),
-              [Input('data-df-and-message', 'children')])
-def output_upload_status_data(data):
-    return data[1]
-
-
-# Hidden Label Div --> Display upload status message (Labels)
-@app.callback(Output('upload-label-message', 'children'),
-              [Input('label-df-and-message', 'children')])
-def output_upload_status_label(data):
-    return data[1]
-
-
-# Button Click --> Update graph with states
-@app.callback(Output('plot-div', 'children'),
-              [Input('tsne-train-button', 'n_clicks')],
-              [State('perplexity-state', 'value'),
-               State('n-iter-state', 'value'),
-               State('lr-state', 'value'),
-               State('pca-state', 'value'),
-               State('data-df-and-message', 'children'),
-               State('label-df-and-message', 'children')
-               ])
-def update_graph(n_clicks, perplexity, n_iter, learning_rate, pca_dim, data_div, label_div):
-    """Run the t-SNE algorithm upon clicking the training button"""
-
-    error_message = None  # No error message at the beginning
-
-    # Fix for startup POST
-    if n_clicks <= 0 or data_div is None or label_div is None:
-        global data
-        kl_divergence, end_time = None, None
-
-    else:
-        # Extract the data dataframe and the labels dataframe from the divs. they are both the first child of the div,
-        # and are serialized in json
-        data_df = pd.read_json(data_div[0], orient="split")
-        label_df = pd.read_json(label_div[0], orient="split")
-
-        # Fix the range of possible values
-        if n_iter > 1000:
-            n_iter = 1000
-        elif n_iter < 250:
-            n_iter = 250
-
-        if perplexity > 50:
-            perplexity = 50
-        elif perplexity < 5:
-            perplexity = 5
-
-        if learning_rate > 1000:
-            learning_rate = 1000
-        elif learning_rate < 10:
-            learning_rate = 10
-
-        if pca_dim > data_df.shape[1]:  # We limit the pca_dim to the dimensionality of the dataset
-            pca_dim = data_df.shape[1]
-        elif pca_dim < 3:
-            pca_dim = 3
-
-        # Start timer
-        start_time = time.time()
-
-        # Apply PCA on the data first
-        pca = PCA(n_components=pca_dim)
-        data_pca = pca.fit_transform(data_df)
-
-        # Then, apply t-SNE with the input parameters
-        tsne = TSNE(n_components=3,
-                    perplexity=perplexity,
-                    learning_rate=learning_rate,
-                    n_iter=n_iter)
-
-        try:
-            data_tsne = tsne.fit_transform(data_pca)
-            kl_divergence = tsne.kl_divergence_
-
-            # Combine the reduced t-sne data with its label
-            tsne_data_df = pd.DataFrame(data_tsne, columns=['x', 'y', 'z'])
-
-            label_df.columns = ['label']
-
-            combined_df = tsne_data_df.join(label_df)
-
-            data = []
-
-            # Group by the values of the label
-            for idx, val in combined_df.groupby('label'):
-                scatter = go.Scatter3d(
-                    name=idx,
-                    x=val['x'],
-                    y=val['y'],
-                    z=val['z'],
-                    mode='markers',
-                    marker=dict(
-                        size=2.5,
-                        symbol='circle-dot'
-                    )
-                )
-                data.append(scatter)
-
-            end_time = time.time() - start_time
-
-        # Catches Heroku server timeout
-        except Exception as e:
-            print(e)
-            error_message = "We were unable to train the t-SNE model due to timeout. Try to clone the repo and run the program locally."
-            kl_divergence, end_time = None, None
-
-    return [
-        # Data about the graph
-        html.Div([
-            kl_divergence
-        ],
-            id="kl-divergence",
-            style={'display': 'none'}
+        dash_table.DataTable(
+            df.to_dict('records'),
+            [{'name': i, 'id': i} for i in df.columns]
         ),
 
-        html.Div([
-            end_time
-        ],
-            id="end-time",
-            style={'display': 'none'}
-        ),
+        html.Hr(),  # horizontal line
 
-        html.Div([
-            error_message
-        ],
-            id="error-message",
-            style={'display': 'none'}
-        ),
+        # For debugging, display the raw contents provided by the web browser
+        html.Div('Raw Content'),
+        html.Pre(contents[0:200] + '...', style={
+            'whiteSpace': 'pre-wrap',
+            'wordBreak': 'break-all'
+        })
+    ])
 
-        # The graph
-        dcc.Graph(
-            id='tsne-3d-plot',
-            figure={
-                'data': data,
-                'layout': tsne_layout
-            },
-            style={
-                'height': '80vh',
-            },
-        )
-    ]
+@app.callback(Output('output-data-upload', 'children'),
+              Input('upload-data', 'contents'),
+              dash.dependencies.State('upload-data', 'filename'),
+              dash.dependencies.State('upload-data', 'last_modified'))
+def update_output(list_of_contents, list_of_names, list_of_dates):
+    if list_of_contents is not None:
+        children = [
+            parse_contents(c, n, d) for c, n, d in
+            zip(list_of_contents, list_of_names, list_of_dates)]
+        return children
 
 
-# Updated graph --> Training status message
-@app.callback(Output('training-status-message', 'children'),
-              [Input('end-time', 'children'),
-               Input('kl-divergence', 'children')])
-def update_training_info(end_time, kl_divergence):
-    # If an error message was output during the training.
-
-    if end_time is None or kl_divergence is None or end_time[0] is None or kl_divergence[0] is None:
-        return None
-    else:
-        end_time = end_time[0]
-        kl_divergence = kl_divergence[0]
-
-        return [
-            html.P(f"t-SNE trained in {end_time:.2f} seconds.",
-                   style={'margin-bottom': '0px'}),
-            html.P(f"Final KL-Divergence: {kl_divergence:.2f}",
-                   style={'margin-bottom': '0px'})
-        ]
-
-
-@app.callback(Output('error-status-message', 'children'),
-              [Input('error-message', 'children')])
-def show_error_message(error_message):
-    if error_message is not None:
-        return [
-            html.P(error_message[0])
-        ]
-
-    else:
-        return []
-
-
-# Load external CSS
-external_css = [
-    "https://cdnjs.cloudflare.com/ajax/libs/normalize/7.0.0/normalize.min.css",
-    "https://cdnjs.cloudflare.com/ajax/libs/skeleton/2.0.4/skeleton.min.css",
-    "//fonts.googleapis.com/css?family=Raleway:400,300,600",
-    "https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css",
-    # "https://raw.githubusercontent.com/plotly/dash-tsne/master/loading_screen.css",
-    "https://codepen.io/chriddyp/pen/brPBPO.css",
-    "https://cdn.rawgit.com/plotly/dash-app-stylesheets/2cc54b8c03f4126569a3440aae611bbef1d7a5dd/stylesheet.css"
-]
-
-for css in external_css:
-    app.css.append_css({"external_url": css})
-
-# Running the server
-if __name__ == '__main__':
-    app.run_server(debug=True)
+# Run the app
+if __name__ == "__main__":
+    app.run_server()
